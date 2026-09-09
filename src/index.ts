@@ -397,7 +397,7 @@ const app = new Elysia()
       },
     }
   )
-  // 2. Regenerate a specific section (5E, KPA, or Evaluation table)
+  // 2. Regenerate a specific section (5E, KPA, Evaluation table, or Standards)
   .post(
     "/api/regenerate-section",
     async ({ body, set }) => {
@@ -433,7 +433,8 @@ const app = new Elysia()
           t.Literal("steps_5e"),
           t.Literal("evaluation_table"),
           t.Literal("kpa"),
-        ], { description: "ส่วนที่ต้องการสร้างใหม่ (steps_5e, evaluation_table, หรือ kpa)" }),
+          t.Literal("standards"),
+        ], { description: "ส่วนที่ต้องการสร้างใหม่ (steps_5e, evaluation_table, kpa, หรือ standards)" }),
         subject_name: t.String({ description: "ชื่อวิชา" }),
         grade_level: t.String({ description: "ระดับชั้น" }),
         unit_title: t.String({ description: "ชื่อหน่วยการเรียนรู้" }),
@@ -443,7 +444,7 @@ const app = new Elysia()
       detail: {
         tags: ["AI Generation"],
         summary: "สร้างเนื้อหาเฉพาะส่วนใหม่ด้วย Gemini AI",
-        description: "สร้างเนื้อหาเฉพาะส่วนที่เลือกใหม่ (steps_5e, evaluation_table, หรือ kpa) โดยไม่ต้อง Re-generate ทั้งหมด",
+        description: "สร้างเนื้อหาเฉพาะส่วนที่เลือกใหม่ (steps_5e, evaluation_table, kpa, หรือ standards) โดยไม่ต้อง Re-generate ทั้งหมด",
       },
     }
   )

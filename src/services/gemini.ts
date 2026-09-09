@@ -319,14 +319,27 @@ ${req.custom_requirements ? `- ความต้องการเฉพาะ�
   throw new Error(`เกิดข้อผิดพลาดในการสร้างเนื้อหาด้วย AI: ${lastError?.message || "ไม่สามารถเชื่อมต่อ AI ได้"}`);
 }
 
-// Regenerate single section (5E, KPA, or Evaluation Table)
+// Regenerate single section (5E, KPA, Evaluation Table, or Standards)
 export async function regenerateSection(
-  section: "steps_5e" | "evaluation_table" | "kpa",
+  section: "steps_5e" | "evaluation_table" | "kpa" | "standards",
   req: GeneratePlanRequest
 ): Promise<any> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || apiKey.trim() === "") {
     const fallback = generateOfflineFallback(req);
+    if (section === "standards") {
+      return sanitizePlanContent(
+        {
+          standard: fallback.standard,
+          indicator: fallback.indicator,
+          concept: fallback.concept,
+          learning_content: fallback.learning_content,
+          competencies: fallback.competencies,
+          desirable_characteristics: fallback.desirable_characteristics,
+        },
+        req.subject_name
+      );
+    }
     return fallback[section];
   }
 
@@ -375,7 +388,7 @@ export async function regenerateSection(
       },
       required: ["evaluation_table"],
     };
-  } else {
+  } else if (section === "kpa") {
     sectionNameThai = "จุดประสงค์การเรียนรู้ (KPA)";
     targetSchema = {
       type: SchemaType.OBJECT,
@@ -392,10 +405,50 @@ export async function regenerateSection(
       },
       required: ["kpa"],
     };
+  } else {
+    sectionNameThai = "มาตรฐานการเรียนรู้ ตัวชี้วัด สาระสำคัญ และสาระการเรียนรู้";
+    targetSchema = {
+      type: SchemaType.OBJECT,
+      properties: {
+        standards: {
+          type: SchemaType.OBJECT,
+          properties: {
+            standard: {
+              type: SchemaType.STRING,
+              description: "มาตรฐานการเรียนรู้ตามหลักสูตรแกนกลางการศึกษาขั้นพื้นฐาน (เช่น มาตรฐาน ว 2.3 เข้าใจความหมายของพลังงาน...)",
+            },
+            indicator: {
+              type: SchemaType.STRING,
+              description: "ตัวชี้วัดหรือผลการเรียนรู้ที่สอดคล้องกับมาตรฐาน (เช่น ว 2.3 ป.5/5 บรรยายการได้ยินเสียงผ่านตัวกลาง...)",
+            },
+            concept: {
+              type: SchemaType.STRING,
+              description: "สาระสำคัญหรือความคิดรวบยอดของบทเรียนที่ถูกต้องตามหลักวิชาการ 2-4 บรรทัด",
+            },
+            learning_content: {
+              type: SchemaType.STRING,
+              description: "สาระการเรียนรู้ (Learning Content) สรุปเนื้อหาสำคัญของบทเรียนเป็นประเด็นชัดเจนและมีหัวข้อย่อยแบบบุลเล็ต (•)",
+            },
+            competencies: {
+              type: SchemaType.ARRAY,
+              items: { type: SchemaType.STRING },
+              description: "สมรรถนะสำคัญของผู้เรียน (2-3 ข้อ)",
+            },
+            desirable_characteristics: {
+              type: SchemaType.ARRAY,
+              items: { type: SchemaType.STRING },
+              description: "คุณลักษณะอันพึงประสงค์ (2-3 ข้อ)",
+            },
+          },
+          required: ["standard", "indicator", "concept", "learning_content"],
+        },
+      },
+      required: ["standards"],
+    };
   }
 
   const prompt = `
-สร้างเฉพาะส่วน "${sectionNameThai}" ใหม่ให้มีความน่าสนใจ ทันสมัย และสอดคล้องกับหลักสูตรไทย
+สร้างเฉพาะส่วน "${sectionNameThai}" ใหม่ให้มีความน่าสนใจ ทันสมัย และสอดคล้องกับหลักสูตรแกนกลางการศึกษาขั้นพื้นฐานของไทยอย่างแท้จริง
 วิชา: ${req.subject_name} (${req.grade_level})
 หน่วยการเรียนรู้: ${req.unit_title} เรื่อง ${req.sub_unit_title}
 ${req.custom_requirements ? `ข้อกำหนดเพิ่มเติม: ${req.custom_requirements}` : ""}
@@ -403,7 +456,7 @@ ${req.custom_requirements ? `ข้อกำหนดเพิ่มเติม
 ข้อกำหนดภาษาและตัวอักษร:
 - ใช้ภาษาไทยมาตรฐานที่เป็นทางการ สละสลวย ถูกต้องตามหลักไวยากรณ์
 - ห้ามมีตัวอักษรภาษาจีน (เช่น 遗传), ภาษาญี่ปุ่น, ภาษาอาหรับ หรือภาษาอื่นเด็ดขาด
-- หากมีคำศัพท์เช่น Genetic material ให้ใช้ สารพันธุกรรม (Genetic material)
+- หากมีคำศัพท์ภาษาอังกฤษ ให้ใช้วงเล็บ เช่น สารพันธุกรรม (Genetic material)
 `;
 
   const candidateModels = getCandidateModels();
@@ -427,7 +480,8 @@ ${req.custom_requirements ? `ข้อกำหนดเพิ่มเติม
         return resp.response.text();
       });
       const parsed = JSON.parse(result);
-      return sanitizePlanContent(parsed[section], req.subject_name);
+      const dataToReturn = section === "standards" ? parsed.standards : parsed[section];
+      return sanitizePlanContent(dataToReturn, req.subject_name);
     } catch (error: any) {
       lastError = error;
       if (isModelUnavailableError(error)) {
@@ -441,6 +495,19 @@ ${req.custom_requirements ? `ข้อกำหนดเพิ่มเติม
 
   console.error(`Error regenerating section ${section}, using fallback:`, lastError);
   const fallback = generateOfflineFallback(req);
+  if (section === "standards") {
+    return sanitizePlanContent(
+      {
+        standard: fallback.standard,
+        indicator: fallback.indicator,
+        concept: fallback.concept,
+        learning_content: fallback.learning_content,
+        competencies: fallback.competencies,
+        desirable_characteristics: fallback.desirable_characteristics,
+      },
+      req.subject_name
+    );
+  }
   return sanitizePlanContent(fallback[section], req.subject_name);
 }
 
