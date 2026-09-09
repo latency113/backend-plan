@@ -86,7 +86,7 @@ function createBodyParagraph(text: string, firstLineIndent = 0): Paragraph {
 function createNumberedItem(num: string | number, text: string): Paragraph {
   const cleanText = text.replace(/[ \t]{2,}/g, " ");
   return new Paragraph({
-    alignment: AlignmentType.THAI_DISTRIBUTE,
+    alignment: AlignmentType.LEFT,
     indent: { left: 720, hanging: 360 }, // Matches test-data.pdf list indent
     spacing: { before: 20, after: 20, line: LINE_SPACING },
     children: [
@@ -109,7 +109,7 @@ function createNumberedItem(num: string | number, text: string): Paragraph {
 function createBulletItem(text: string, indentLeft = 720, bulletSymbol = "•   "): Paragraph {
   const cleanText = text.replace(/[ \t]{2,}/g, " ");
   return new Paragraph({
-    alignment: AlignmentType.THAI_DISTRIBUTE,
+    alignment: AlignmentType.LEFT,
     indent: { left: indentLeft, hanging: 360 },
     spacing: { before: 20, after: 20, line: LINE_SPACING },
     children: [
@@ -285,7 +285,7 @@ function parseStepToParagraphs(text?: string): Paragraph[] {
       // In test-data.pdf, 5E questions use circle "○  "
       paragraphs.push(
         new Paragraph({
-          alignment: AlignmentType.THAI_DISTRIBUTE,
+          alignment: AlignmentType.LEFT,
           indent: { left: 1080, hanging: 360 }, // Level 2 indent
           spacing: { before: 20, after: 20, line: LINE_SPACING },
           children: [
@@ -316,7 +316,7 @@ function parseStepToParagraphs(text?: string): Paragraph[] {
       const textContent = subNumMatch ? subNumMatch[2] : regularNumMatch![2];
       paragraphs.push(
         new Paragraph({
-          alignment: AlignmentType.THAI_DISTRIBUTE,
+          alignment: AlignmentType.LEFT,
           indent: { left: 1080, hanging: 360 }, // Level 2 indent
           spacing: { before: 20, after: 20, line: LINE_SPACING },
           children: [
@@ -342,7 +342,7 @@ function parseStepToParagraphs(text?: string): Paragraph[] {
     if (regularNumMatch) {
       paragraphs.push(
         new Paragraph({
-          alignment: AlignmentType.THAI_DISTRIBUTE,
+          alignment: AlignmentType.LEFT,
           indent: { left: 720, hanging: 360 }, // Matches test-data.pdf list indent
           spacing: { before: 20, after: 20, line: LINE_SPACING },
           children: [
@@ -367,7 +367,7 @@ function parseStepToParagraphs(text?: string): Paragraph[] {
     // 6. Regular text lines / continuation paragraphs
     paragraphs.push(
       new Paragraph({
-        alignment: AlignmentType.THAI_DISTRIBUTE,
+        alignment: AlignmentType.LEFT,
         indent: { left: isIndented ? 720 : 0 },
         spacing: { before: 20, after: 20, line: LINE_SPACING },
         children: [
