@@ -391,11 +391,12 @@ export async function exportLessonPlanToDocx(plan: LessonPlan): Promise<Buffer> 
   }
   if (!logoBuffer) {
     const logoPaths = [
-      path.resolve(import.meta.dir, "../templates/school-logo.png"),
-      path.resolve(import.meta.dir, "../../../frontend/public/images/school-logo.png"),
-      "/Users/macos/Desktop/teacher/backend/src/templates/school-logo.png",
-      "/Users/macos/Desktop/teacher/frontend/public/images/school-logo.png",
-    ];
+      path.resolve(process.cwd(), "src/templates/school-logo.png"),
+      path.resolve(process.cwd(), "templates/school-logo.png"),
+      typeof import.meta !== "undefined" && import.meta.dir
+        ? path.resolve(import.meta.dir, "../templates/school-logo.png")
+        : "",
+    ].filter(Boolean);
     for (const lp of logoPaths) {
       if (fs.existsSync(lp)) {
         try {

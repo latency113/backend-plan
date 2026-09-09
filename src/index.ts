@@ -239,8 +239,14 @@ const app = new Elysia()
       set.status = 500;
       return { success: false, error: error.message };
     }
-  })
-  .listen(port);
+  });
 
-console.log(`🦊 Elysia server is running at ${app.server?.hostname}:${app.server?.port}`);
+export default app;
+
+if (!process.env.VERCEL) {
+  app.listen(port);
+  console.log(`🦊 Elysia server is running at http://${app.server?.hostname || 'localhost'}:${app.server?.port || port}`);
+}
+
 export type App = typeof app;
+
