@@ -1,7 +1,7 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import type { LessonPlan } from "../types/lesson-plan";
 import * as fs from "fs";
-import * as path from "path";
+import * as path from "path";   
 
 export let supabase: SupabaseClient | null = null;
 

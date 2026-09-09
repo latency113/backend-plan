@@ -1,6 +1,7 @@
 import { Elysia, t } from "elysia";
 import { cors } from "@elysiajs/cors";
 import { swagger } from "@elysiajs/swagger";
+import { jwt } from "@elysiajs/jwt";
 import { generateLessonPlanContent, regenerateSection } from "./services/gemini";
 import { exportLessonPlanToDocx } from "./services/docx";
 import {
@@ -10,6 +11,13 @@ import {
   deleteLessonPlan,
 } from "./services/supabase";
 import { listPresets } from "./services/presets";
+import {
+  findUserByUsername,
+  findUserById,
+  createUser,
+  verifyPassword,
+  sanitizeUser,
+} from "./services/auth";
 import type { LessonPlan } from "./types/lesson-plan";
 
 const port = Number(process.env.PORT) || 4000;
@@ -21,6 +29,12 @@ const app = new Elysia()
       methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
       allowedHeaders: ["Content-Type", "Authorization"],
       credentials: true,
+    })
+  )
+  .use(
+    jwt({
+      name: "jwt",
+      secret: process.env.JWT_SECRET || "teacher-assistant-jwt-secret-key-2026",
     })
   )
   .use(
@@ -41,6 +55,10 @@ const app = new Elysia()
           },
         },
         tags: [
+          {
+            name: "Authentication",
+            description: "ระบบสมาชิกและเข้าสู่ระบบ (Bun Argon2id Password Hashing + JWT Token)",
+          },
           {
             name: "AI Generation",
             description: "สร้างแผนการสอนและสร้างเนื้อหาเฉพาะส่วนด้วย Gemini AI",
@@ -86,6 +104,185 @@ const app = new Elysia()
         tags: ["System"],
         summary: "API Health & Info",
         description: "ตรวจสอบสถานะ API และโมเดล AI ที่กำลังใช้งาน พร้อมลิงก์ไปยังหน้าเอกสาร /docs",
+      },
+    }
+  )
+  // ============================================================================
+  // AUTHENTICATION ROUTES (Bun Argon2id Password Hashing + JWT Token)
+  // ============================================================================
+  .post(
+    "/api/auth/register",
+    async ({ body, jwt, set }) => {
+      try {
+        const { username, password, full_name, school_name, email } = body;
+
+        const existing = await findUserByUsername(username);
+        if (existing) {
+          set.status = 400;
+          return {
+            success: false,
+            message: `ชื่อผู้ใช้ "${username}" มีอยู่ในระบบแล้ว กรุณาเลือกชื่ออื่น`,
+          };
+        }
+
+        const user = await createUser({
+          username,
+          password,
+          full_name,
+          school_name,
+          email,
+        });
+
+        const token = await jwt.sign({
+          id: user.id,
+          username: user.username,
+        });
+
+        return {
+          success: true,
+          message: "ลงทะเบียนสมาชิกเรียบร้อยแล้ว",
+          data: {
+            user: sanitizeUser(user),
+            token,
+          },
+        };
+      } catch (err: any) {
+        console.error("[Auth Register Error]:", err);
+        set.status = 500;
+        return {
+          success: false,
+          message: err.message || "เกิดข้อผิดพลาดในการลงทะเบียน",
+        };
+      }
+    },
+    {
+      body: t.Object({
+        username: t.String({ minLength: 3, description: "ชื่อผู้ใช้ (อย่างน้อย 3 ตัวอักษร)" }),
+        password: t.String({ minLength: 6, description: "รหัสผ่าน (อย่างน้อย 6 ตัวอักษร)" }),
+        full_name: t.Optional(t.String({ description: "ชื่อ-นามสกุลครูผู้สอน" })),
+        school_name: t.Optional(t.String({ description: "ชื่อโรงเรียน / สถานศึกษา" })),
+        email: t.Optional(t.String({ description: "อีเมลสำหรับติดต่อ" })),
+      }),
+      detail: {
+        tags: ["Authentication"],
+        summary: "ลงทะเบียนสมาชิกใหม่ (เข้ารหัสรหัสผ่านด้วย Bun Argon2id)",
+        description:
+          "สมัครสมาชิกครูผู้สอน โดยรหัสผ่านจะถูกเข้ารหัสอย่างปลอดภัยด้วยอัลกอริทึม Argon2id (ผ่าน Bun.password.hash) พร้อมส่งกลับ JWT Token",
+      },
+    }
+  )
+  .post(
+    "/api/auth/login",
+    async ({ body, jwt, set }) => {
+      try {
+        const { username, password } = body;
+
+        const user = await findUserByUsername(username);
+        if (!user) {
+          set.status = 401;
+          return {
+            success: false,
+            message: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง",
+          };
+        }
+
+        // Verify password using Bun native Argon2id
+        const isMatch = await verifyPassword(password, user.password_hash);
+        if (!isMatch) {
+          set.status = 401;
+          return {
+            success: false,
+            message: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง",
+          };
+        }
+
+        const token = await jwt.sign({
+          id: user.id,
+          username: user.username,
+        });
+
+        return {
+          success: true,
+          message: "เข้าสู่ระบบสำเร็จ",
+          data: {
+            user: sanitizeUser(user),
+            token,
+          },
+        };
+      } catch (err: any) {
+        console.error("[Auth Login Error]:", err);
+        set.status = 500;
+        return {
+          success: false,
+          message: err.message || "เกิดข้อผิดพลาดในการเข้าสู่ระบบ",
+        };
+      }
+    },
+    {
+      body: t.Object({
+        username: t.String({ description: "ชื่อผู้ใช้" }),
+        password: t.String({ description: "รหัสผ่าน" }),
+      }),
+      detail: {
+        tags: ["Authentication"],
+        summary: "เข้าสู่ระบบ (ตรวจสอบรหัสผ่านด้วย Bun Argon2id)",
+        description:
+          "ตรวจสอบชื่อผู้ใช้และรหัสผ่านด้วย Bun.password.verify เทียบกับ Argon2id hash และส่งกลับ JWT Token",
+      },
+    }
+  )
+  .get(
+    "/api/auth/me",
+    async ({ headers, jwt, set }) => {
+      try {
+        const authHeader = headers["authorization"] || "";
+        const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : authHeader;
+
+        if (!token) {
+          set.status = 401;
+          return {
+            success: false,
+            message: "กรุณาแนบ Authorization Bearer Token",
+          };
+        }
+
+        const payload = await jwt.verify(token);
+        if (!payload || !payload.id) {
+          set.status = 401;
+          return {
+            success: false,
+            message: "Token ไม่ถูกต้องหรือหมดอายุแล้ว กรุณาเข้าสู่ระบบใหม่",
+          };
+        }
+
+        const user = await findUserById(payload.id as string);
+        if (!user) {
+          set.status = 404;
+          return {
+            success: false,
+            message: "ไม่พบข้อมูลผู้ใช้ในระบบ",
+          };
+        }
+
+        return {
+          success: true,
+          data: sanitizeUser(user),
+        };
+      } catch (err: any) {
+        console.error("[Auth Me Error]:", err);
+        set.status = 401;
+        return {
+          success: false,
+          message: "Token ไม่ถูกต้องหรือหมดอายุ",
+        };
+      }
+    },
+    {
+      detail: {
+        tags: ["Authentication"],
+        summary: "ดึงข้อมูลผู้ใช้ปัจจุบันจาก JWT Token",
+        description:
+          "ตรวจสอบความถูกต้องของ JWT Token และส่งกลับข้อมูลโปรไฟล์ของผู้ใช้ที่เข้าสู่ระบบอยู่",
       },
     }
   )
@@ -380,6 +577,7 @@ const app = new Elysia()
   );
 
 export default app;
+export { app };
 
 if (!process.env.VERCEL) {
   app.listen(port);
