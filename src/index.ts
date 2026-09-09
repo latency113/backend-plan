@@ -555,7 +555,7 @@ const app = new Elysia()
       },
     }
   )
-  // 6. CRUD: Save or update plan (Tagged with User ID)
+  // 6. CRUD: Save or update plan (Requires Authentication)
   .post(
     "/api/plans",
     async ({ body, headers, query, jwt, set }) => {
@@ -565,6 +565,15 @@ const app = new Elysia()
           jwt,
           (body as any)?.user_id || (query as any)?.user_id
         );
+
+        if (!userId) {
+          set.status = 401;
+          return {
+            success: false,
+            message: "กรุณาเข้าสู่ระบบก่อนบันทึกแผนการสอน",
+          };
+        }
+
         const saved = await upsertLessonPlan(body as LessonPlan, userId);
         return { success: true, data: saved };
       } catch (error: any) {
@@ -576,9 +585,9 @@ const app = new Elysia()
     {
       detail: {
         tags: ["Lesson Plans"],
-        summary: "บันทึกหรืออัปเดตแผนการสอน (ผูกกับ User ID อัตโนมัติ)",
+        summary: "บันทึกหรืออัปเดตแผนการสอน (ต้องเข้าสู่ระบบก่อน)",
         description:
-          "บันทึกแผนการสอนโดยผูกเข้ากับ User ID ของผู้ใช้ปัจจุบันโดยอัตโนมัติจาก Bearer JWT Token",
+          "บันทึกแผนการสอนโดยผูกเข้ากับ User ID ของผู้ใช้ปัจจุบัน ต้องแนบ Bearer JWT Token",
       },
     }
   )
