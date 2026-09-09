@@ -22,6 +22,30 @@ import type { LessonPlan } from "./types/lesson-plan";
 
 const port = Number(process.env.PORT) || 4000;
 
+async function extractUserId(
+  headers: Record<string, string | undefined>,
+  jwtPlugin: any,
+  fallbackUserId?: string
+): Promise<string | undefined> {
+  const authHeader = headers["authorization"] || "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : authHeader;
+  if (token) {
+    try {
+      const payload = await jwtPlugin.verify(token);
+      if (payload && payload.id) {
+        return payload.id as string;
+      }
+    } catch {}
+  }
+  if (headers["x-user-id"]) {
+    return headers["x-user-id"];
+  }
+  if (fallbackUserId && typeof fallbackUserId === "string") {
+    return fallbackUserId;
+  }
+  return undefined;
+}
+
 const app = new Elysia()
   .use(
     cors({
@@ -464,32 +488,47 @@ const app = new Elysia()
       },
     }
   )
-  // 4. CRUD: List saved plans
+  // 4. CRUD: List saved plans (User ID isolated)
   .get(
     "/api/plans",
-    async ({ set }) => {
+    async ({ headers, query, jwt, set }) => {
       try {
-        const plans = await listLessonPlans();
-        return { success: true, data: plans };
+        const userId = await extractUserId(headers, jwt, (query as any)?.user_id);
+        const plans = await listLessonPlans(userId);
+        return {
+          success: true,
+          count: plans.length,
+          user_id: userId || null,
+          data: plans,
+        };
       } catch (error: any) {
         set.status = 500;
         return { success: false, error: error.message };
       }
     },
     {
+      query: t.Optional(
+        t.Object({
+          user_id: t.Optional(
+            t.String({ description: "กรองตาม User ID (หากไม่ได้ส่ง Bearer Token)" })
+          ),
+        })
+      ),
       detail: {
         tags: ["Lesson Plans"],
-        summary: "ดึงรายการแผนการสอนทั้งหมด",
-        description: "ดึงรายการแผนการสอนทั้งหมดที่บันทึกไว้ในระบบ เรียงลำดับจากล่าสุด",
+        summary: "ดึงรายการแผนการสอน (แยกตาม User ID)",
+        description:
+          "ดึงรายการแผนการสอนเฉพาะของ User ที่เข้าสู่ระบบ (จาก Bearer JWT Token หรือ ?user_id)",
       },
     }
   )
   // 5. CRUD: Get single plan
   .get(
     "/api/plans/:id",
-    async ({ params, set }) => {
+    async ({ params, headers, query, jwt, set }) => {
       try {
-        const plan = await getLessonPlanById(params.id);
+        const userId = await extractUserId(headers, jwt, (query as any)?.user_id);
+        const plan = await getLessonPlanById(params.id, userId);
         if (!plan) {
           set.status = 404;
           return { success: false, error: "Plan not found" };
@@ -504,19 +543,29 @@ const app = new Elysia()
       params: t.Object({
         id: t.String({ description: "ID ของแผนการสอน (UUID)" }),
       }),
+      query: t.Optional(
+        t.Object({
+          user_id: t.Optional(t.String({ description: "User ID ของเจ้าของแผน" })),
+        })
+      ),
       detail: {
         tags: ["Lesson Plans"],
-        summary: "ดึงข้อมูลแผนการสอนตาม ID",
-        description: "ส่งคืนข้อมูลรายละเอียดแผนการสอนตัวเต็มตาม ID ที่ระบุ",
+        summary: "ดึงข้อมูลแผนการสอนตาม ID (ตรวจสอบสิทธิ์ User ID)",
+        description: "ส่งคืนข้อมูลรายละเอียดแผนการสอนตัวเต็มตาม ID ที่ระบุ เฉพาะของ User ที่ได้รับอนุญาต",
       },
     }
   )
-  // 6. CRUD: Save or update plan
+  // 6. CRUD: Save or update plan (Tagged with User ID)
   .post(
     "/api/plans",
-    async ({ body, set }) => {
+    async ({ body, headers, query, jwt, set }) => {
       try {
-        const saved = await upsertLessonPlan(body as LessonPlan);
+        const userId = await extractUserId(
+          headers,
+          jwt,
+          (body as any)?.user_id || (query as any)?.user_id
+        );
+        const saved = await upsertLessonPlan(body as LessonPlan, userId);
         return { success: true, data: saved };
       } catch (error: any) {
         console.error("[API Error] Saving plan:", error);
@@ -527,17 +576,19 @@ const app = new Elysia()
     {
       detail: {
         tags: ["Lesson Plans"],
-        summary: "บันทึกหรืออัปเดตแผนการสอน",
-        description: "บันทึกแผนการสอนใหม่ หรืออัปเดตแผนเดิมที่มีอยู่แล้วลงในฐานข้อมูล Supabase",
+        summary: "บันทึกหรืออัปเดตแผนการสอน (ผูกกับ User ID อัตโนมัติ)",
+        description:
+          "บันทึกแผนการสอนโดยผูกเข้ากับ User ID ของผู้ใช้ปัจจุบันโดยอัตโนมัติจาก Bearer JWT Token",
       },
     }
   )
-  // 7. CRUD: Delete plan
+  // 7. CRUD: Delete plan (Protected by User ID)
   .delete(
     "/api/plans/:id",
-    async ({ params, set }) => {
+    async ({ params, headers, query, jwt, set }) => {
       try {
-        const ok = await deleteLessonPlan(params.id);
+        const userId = await extractUserId(headers, jwt, (query as any)?.user_id);
+        const ok = await deleteLessonPlan(params.id, userId);
         return { success: ok };
       } catch (error: any) {
         set.status = 500;
@@ -548,10 +599,15 @@ const app = new Elysia()
       params: t.Object({
         id: t.String({ description: "ID ของแผนการสอนที่ต้องการลบ (UUID)" }),
       }),
+      query: t.Optional(
+        t.Object({
+          user_id: t.Optional(t.String({ description: "User ID ของเจ้าของแผน" })),
+        })
+      ),
       detail: {
         tags: ["Lesson Plans"],
-        summary: "ลบแผนการสอนตาม ID",
-        description: "ลบแผนการสอนออกจากฐานข้อมูล",
+        summary: "ลบแผนการสอนตาม ID (เฉพาะของ User นั้น)",
+        description: "ลบแผนการสอนออกจากฐานข้อมูล โดยตรวจสอบสิทธิ์ตาม User ID",
       },
     }
   )

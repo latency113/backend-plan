@@ -35,6 +35,7 @@ export interface LessonPlanContent {
 
 export interface LessonPlan {
   id?: string;
+  user_id?: string;
   teacher_name: string;
   teacher_position?: string;
   plan_number: number;

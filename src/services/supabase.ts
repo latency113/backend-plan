@@ -55,48 +55,74 @@ export function isTableMissingError(error: any): boolean {
   );
 }
 
-export async function listLessonPlans(): Promise<LessonPlan[]> {
+function filterPlansByUserId(plans: LessonPlan[], userId?: string): LessonPlan[] {
+  if (userId) {
+    return plans.filter((p) => p.user_id === userId);
+  }
+  // If no userId, return only guest/anonymous plans (or plans without user_id)
+  return plans.filter((p) => !p.user_id);
+}
+
+export async function listLessonPlans(userId?: string): Promise<LessonPlan[]> {
   if (supabase) {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from("lesson_plans")
         .select("*")
         .order("created_at", { ascending: false });
+
+      if (userId) {
+        query = query.eq("user_id", userId);
+      } else {
+        query = query.is("user_id", null);
+      }
+
+      const { data, error } = await query;
 
       if (error) {
         if (isTableMissingError(error)) {
           console.warn(
             "[Supabase Notice] Table 'lesson_plans' is not yet created in Supabase database. Falling back to local storage seamlessly."
           );
-          return getLocalPlans();
+          return filterPlansByUserId(getLocalPlans(), userId);
+        }
+        // If column user_id is missing in Supabase (not yet migrated), fallback to local
+        if (error.message?.includes("column") && error.message?.includes("user_id")) {
+          console.warn("[Supabase Notice] Column 'user_id' not found in Supabase table. Using local filter.");
+          return filterPlansByUserId(getLocalPlans(), userId);
         }
         console.error("[Supabase Error listing plans]:", error);
-        return getLocalPlans();
+        return filterPlansByUserId(getLocalPlans(), userId);
       }
       return data || [];
     } catch (err) {
       console.warn("[Supabase Exception listing plans, using fallback]:", err);
-      return getLocalPlans();
+      return filterPlansByUserId(getLocalPlans(), userId);
     }
   }
 
   // Fallback to local store
-  return getLocalPlans();
+  return filterPlansByUserId(getLocalPlans(), userId);
 }
 
-export async function getLessonPlanById(id: string): Promise<LessonPlan | null> {
+export async function getLessonPlanById(id: string, userId?: string): Promise<LessonPlan | null> {
   if (supabase) {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from("lesson_plans")
         .select("*")
-        .eq("id", id)
-        .single();
+        .eq("id", id);
+
+      if (userId) {
+        query = query.eq("user_id", userId);
+      }
+
+      const { data, error } = await query.maybeSingle();
 
       if (error) {
         if (isTableMissingError(error)) {
           const local = getLocalPlans();
-          return local.find((p) => p.id === id) || null;
+          return local.find((p) => p.id === id && (!userId || p.user_id === userId)) || null;
         }
         console.error(`[Supabase Error getting plan ${id}]:`, error);
         return null;
@@ -104,30 +130,34 @@ export async function getLessonPlanById(id: string): Promise<LessonPlan | null> 
       return data;
     } catch {
       const local = getLocalPlans();
-      return local.find((p) => p.id === id) || null;
+      return local.find((p) => p.id === id && (!userId || p.user_id === userId)) || null;
     }
   }
 
   const local = getLocalPlans();
-  return local.find((p) => p.id === id) || null;
+  return local.find((p) => p.id === id && (!userId || p.user_id === userId)) || null;
 }
 
-export async function upsertLessonPlan(plan: LessonPlan): Promise<LessonPlan> {
+export async function upsertLessonPlan(plan: LessonPlan, userId?: string): Promise<LessonPlan> {
   const now = new Date().toISOString();
+  const effectiveUserId = userId || plan.user_id;
+
+  const payload: LessonPlan = {
+    ...plan,
+    user_id: effectiveUserId,
+    updated_at: now,
+  };
 
   if (supabase) {
-    const payload = {
-      ...plan,
-      updated_at: now,
-    };
-    if (!payload.id) {
-      delete payload.id;
+    const dbPayload: any = { ...payload };
+    if (!dbPayload.id) {
+      delete dbPayload.id;
     }
 
     try {
       const { data, error } = await supabase
         .from("lesson_plans")
-        .upsert(payload)
+        .upsert(dbPayload)
         .select()
         .single();
 
@@ -136,18 +166,30 @@ export async function upsertLessonPlan(plan: LessonPlan): Promise<LessonPlan> {
           console.warn(
             "[Supabase Notice] Table 'lesson_plans' not created yet. Saving to local store fallback."
           );
-          return saveToLocalFallback(plan, now);
+          return saveToLocalFallback(payload, now);
+        }
+        // If user_id column doesn't exist in Supabase yet, retry without user_id and save local
+        if (error.message?.includes("column") && error.message?.includes("user_id")) {
+          console.warn("[Supabase Notice] Column 'user_id' missing in Supabase. Upserting without user_id and saving locally.");
+          const fallbackDbPayload = { ...dbPayload };
+          delete fallbackDbPayload.user_id;
+          try {
+            await supabase.from("lesson_plans").upsert(fallbackDbPayload).select().single();
+          } catch {}
+          return saveToLocalFallback(payload, now);
         }
         console.error("[Supabase Error upserting plan]:", error);
-        return saveToLocalFallback(plan, now);
+        return saveToLocalFallback(payload, now);
       }
+      // Also sync to local store
+      saveToLocalFallback(data, now);
       return data;
     } catch {
-      return saveToLocalFallback(plan, now);
+      return saveToLocalFallback(payload, now);
     }
   }
 
-  return saveToLocalFallback(plan, now);
+  return saveToLocalFallback(payload, now);
 }
 
 function saveToLocalFallback(plan: LessonPlan, now: string): LessonPlan {
@@ -155,7 +197,7 @@ function saveToLocalFallback(plan: LessonPlan, now: string): LessonPlan {
   if (plan.id) {
     const index = local.findIndex((p) => p.id === plan.id);
     if (index !== -1) {
-      local[index] = { ...plan, updated_at: now };
+      local[index] = { ...local[index], ...plan, updated_at: now };
       saveLocalPlans(local);
       return local[index];
     }
@@ -172,31 +214,40 @@ function saveToLocalFallback(plan: LessonPlan, now: string): LessonPlan {
   return newPlan;
 }
 
-export async function deleteLessonPlan(id: string): Promise<boolean> {
-  if (supabase) {
-    try {
-      const { error } = await supabase.from("lesson_plans").delete().eq("id", id);
-      if (error) {
-        if (isTableMissingError(error)) {
-          const local = getLocalPlans();
-          const filtered = local.filter((p) => p.id !== id);
-          saveLocalPlans(filtered);
-          return true;
-        }
-        console.error(`[Supabase Error deleting plan ${id}]:`, error);
-        return false;
-      }
-      return true;
-    } catch {
-      const local = getLocalPlans();
-      const filtered = local.filter((p) => p.id !== id);
-      saveLocalPlans(filtered);
-      return true;
-    }
+export async function deleteLessonPlan(id: string, userId?: string): Promise<boolean> {
+  const local = getLocalPlans();
+  const target = local.find((p) => p.id === id);
+
+  // If userId is provided and the target plan exists, ensure the user owns it
+  if (userId && target && target.user_id && target.user_id !== userId) {
+    console.warn(`[Security] User ${userId} attempted to delete plan ${id} owned by ${target.user_id}`);
+    return false;
   }
 
-  const local = getLocalPlans();
-  const filtered = local.filter((p) => p.id !== id);
+  if (supabase) {
+    try {
+      let query = supabase.from("lesson_plans").delete().eq("id", id);
+      if (userId) {
+        query = query.eq("user_id", userId);
+      }
+      const { error } = await query;
+      if (error) {
+        // If column user_id is missing in Supabase table, delete by id after our local ownership check
+        if (
+          error.code === "42703" ||
+          (error.message?.includes("column") && error.message?.includes("user_id"))
+        ) {
+          try {
+            await supabase.from("lesson_plans").delete().eq("id", id);
+          } catch {}
+        } else if (!isTableMissingError(error)) {
+          console.error(`[Supabase Error deleting plan ${id}]:`, error);
+        }
+      }
+    } catch {}
+  }
+
+  const filtered = local.filter((p) => !(p.id === id && (!userId || p.user_id === userId)));
   saveLocalPlans(filtered);
   return true;
 }
