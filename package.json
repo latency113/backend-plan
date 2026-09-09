@@ -1,0 +1,26 @@
+{
+  "name": "backend",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "migrate": "bun run src/scripts/migrate.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@elysiajs/cors": "^1.4.2",
+    "@google/genai": "^2.21.0",
+    "@google/generative-ai": "^0.24.1",
+    "@supabase/supabase-js": "^2.115.0",
+    "docx": "^9.7.1",
+    "docxtemplater": "^3.69.3",
+    "elysia": "^1.4.30",
+    "pizzip": "^3.2.0"
+  }
+}
