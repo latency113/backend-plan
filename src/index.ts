@@ -281,10 +281,10 @@ const app = new Elysia()
 
         const user = await findUserById(payload.id as string);
         if (!user) {
-          set.status = 404;
+          set.status = 401;
           return {
             success: false,
-            message: "ไม่พบข้อมูลผู้ใช้ในระบบ",
+            message: "ไม่พบข้อมูลผู้ใช้ในระบบ กรุณาเข้าสู่ระบบใหม่",
           };
         }
 

@@ -86,7 +86,7 @@ async function getLocalUsers(): Promise<User[]> {
       isSeedingDefault = true;
       const defaultHash = await hashPassword("password123");
       const defaultTeacher: User = {
-        id: "demo-teacher-001",
+        id: "00000000-0000-4000-a000-000000000001",
         username: "teacher",
         email: "teacher@school.ac.th",
         password_hash: defaultHash,
