@@ -416,6 +416,7 @@ export async function exportLessonPlanToDocx(plan: LessonPlan): Promise<Buffer> 
         spacing: { before: 0, after: 120 },
         children: [
           new ImageRun({
+            type: "png",
             data: logoBuffer,
             transformation: {
               width: 75,
@@ -763,7 +764,11 @@ export async function exportLessonPlanToDocx(plan: LessonPlan): Promise<Buffer> 
       ],
     });
 
-  const tableBodyCell = (text: string, widthDxa: number, align = AlignmentType.CENTER) =>
+  const tableBodyCell = (
+    text: string,
+    widthDxa: number,
+    align: (typeof AlignmentType)[keyof typeof AlignmentType] = AlignmentType.CENTER
+  ) =>
     new TableCell({
       width: { size: widthDxa, type: WidthType.DXA },
       borders: { top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder },
