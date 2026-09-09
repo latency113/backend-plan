@@ -68,7 +68,7 @@ function createHeading(text: string, spaceBefore = 140, spaceAfter = 40): Paragr
 
 function createBodyParagraph(text: string, firstLineIndent = 0): Paragraph {
   return new Paragraph({
-    alignment: AlignmentType.JUSTIFIED,
+    alignment: AlignmentType.LEFT,
     indent: firstLineIndent > 0 ? { firstLine: firstLineIndent } : undefined,
     spacing: { before: 20, after: 20, line: LINE_SPACING },
     children: [
@@ -84,7 +84,7 @@ function createBodyParagraph(text: string, firstLineIndent = 0): Paragraph {
 
 function createNumberedItem(num: string | number, text: string): Paragraph {
   return new Paragraph({
-    alignment: AlignmentType.JUSTIFIED,
+    alignment: AlignmentType.LEFT,
     indent: { left: 720, hanging: 360 }, // Matches test-data.pdf list indent
     spacing: { before: 20, after: 20, line: LINE_SPACING },
     children: [
@@ -106,7 +106,7 @@ function createNumberedItem(num: string | number, text: string): Paragraph {
 
 function createBulletItem(text: string, indentLeft = 720, bulletSymbol = "•   "): Paragraph {
   return new Paragraph({
-    alignment: AlignmentType.JUSTIFIED,
+    alignment: AlignmentType.LEFT,
     indent: { left: indentLeft, hanging: 360 },
     spacing: { before: 20, after: 20, line: LINE_SPACING },
     children: [
@@ -160,7 +160,7 @@ function createTwoColItem(code: string, desc: string): Table {
             margins: { top: 20, bottom: 20, left: 60, right: 0 },
             children: [
               new Paragraph({
-                alignment: AlignmentType.JUSTIFIED,
+                alignment: AlignmentType.LEFT,
                 spacing: { before: 0, after: 0, line: LINE_SPACING },
                 children: [
                   new TextRun({
@@ -335,7 +335,7 @@ function parseStepToParagraphs(text?: string): Paragraph[] {
     if (regularNumMatch) {
       paragraphs.push(
         new Paragraph({
-          alignment: AlignmentType.JUSTIFIED,
+          alignment: AlignmentType.LEFT,
           indent: { left: 720, hanging: 360 }, // Matches test-data.pdf list indent
           spacing: { before: 20, after: 20, line: LINE_SPACING },
           children: [
@@ -360,7 +360,7 @@ function parseStepToParagraphs(text?: string): Paragraph[] {
     // 6. Regular text lines / continuation paragraphs
     paragraphs.push(
       new Paragraph({
-        alignment: AlignmentType.JUSTIFIED,
+        alignment: AlignmentType.LEFT,
         indent: { left: isIndented ? 720 : 0 },
         spacing: { before: 20, after: 20, line: LINE_SPACING },
         children: [
