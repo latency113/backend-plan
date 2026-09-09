@@ -26,7 +26,10 @@ const app = new Elysia()
   .use(
     swagger({
       path: "/docs",
-      provider: "swagger-ui",
+      provider: "scalar",
+      scalarConfig: {
+        theme: "purple",
+      },
       documentation: {
         info: {
           title: "Thai Lesson Plan Generator API",
